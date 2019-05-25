@@ -3,15 +3,41 @@ package main
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"flag"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"time"
 )
 
+func rgb565toRGBA(rgb565 uint16) color.RGBA {
+	rConverted := uint8(((rgb565 & 0xF800) >> 8) | ((rgb565 & 0xF800) >> 13))
+	gConverted := uint8(((rgb565 & 0x7E0) >> 3) | ((rgb565 & 0x7E0) >> 9))
+	bConverted := uint8(((rgb565 & 0x1F) << 3) | ((rgb565 & 0x1F) >> 2))
+
+	return color.RGBA{
+		R: rConverted,
+		G: gConverted,
+		B: bConverted,
+		A: 255,
+	}
+}
+
 func main() {
 	log.Println("phone-debug-client")
+
+	outputFormat := flag.String("output", "bin", "The output format (either 'bin' or 'png')")
+
+	flag.Parse()
+
+	if *outputFormat != "bin" && *outputFormat != "png" {
+		log.Fatalf("unknown output format '%s' -- must be either 'bin' or 'png'", *outputFormat)
+	}
 
 	listener, err := net.Listen("tcp", ":8520")
 	if err != nil {
@@ -66,7 +92,36 @@ func main() {
 		fmt.Print(hex.Dump(finalBuffer))
 	}
 
-	ioutil.WriteFile("buffer.bin", finalBuffer, 777)
+	if *outputFormat == "bin" {
+		ioutil.WriteFile("buffer.bin", finalBuffer, 777)
 
-	log.Println("wrote to buffer.bin")
+		log.Println("wrote to buffer.bin")
+	} else if *outputFormat == "png" {
+		// we make the (rather large) assumption that, if the output format is png
+		// that the buffer is a 128x128 rgb565 image
+
+		outputFile, err := os.OpenFile("buffer.png", os.O_CREATE, 777)
+		if err != nil {
+			panic(err)
+		}
+
+		width := 128
+		height := 128
+
+		outputImage := image.NewRGBA(image.Rect(0, 0, width, height))
+
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				dataIndex := 2 * ((y * width) + x)
+				color565 := (uint16(finalBuffer[dataIndex]) << 8) | uint16(finalBuffer[dataIndex+1])
+				outputImage.SetRGBA(x, y, rgb565toRGBA(color565))
+			}
+		}
+
+		png.Encode(outputFile, outputImage)
+
+		outputFile.Close()
+
+		log.Println("wrote to buffer.png")
+	}
 }

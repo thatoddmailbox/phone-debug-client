@@ -100,7 +100,7 @@ func main() {
 		// we make the (rather large) assumption that, if the output format is png
 		// that the buffer is a 128x128 rgb565 image
 
-		outputFile, err := os.OpenFile("buffer.png", os.O_CREATE, 777)
+		outputFile, err := os.Create("buffer.png")
 		if err != nil {
 			panic(err)
 		}
